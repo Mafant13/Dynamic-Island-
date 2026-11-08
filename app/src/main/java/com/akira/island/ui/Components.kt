@@ -243,6 +243,7 @@ fun GroupItem(
     subtitle: String? = null,
     color: Color? = null,
     badge: String? = null,
+    dimmed: Boolean = false,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -251,6 +252,7 @@ fun GroupItem(
             .fillMaxWidth()
             .clip(pos.shape())
             .background(Ui.Card)
+            .alpha(if (dimmed) 0.45f else 1f)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -282,9 +284,13 @@ fun GroupToggle(
     checked: Boolean,
     color: Color? = null,
     badge: String? = null,
+    enabled: Boolean = true,
     onChange: (Boolean) -> Unit,
 ) {
-    GroupItem(pos, icon, title, subtitle, color = color, badge = badge, onClick = { onChange(!checked) }) { IslandSwitch(checked, onChange) }
+    GroupItem(pos, icon, title, subtitle, color = color, badge = badge, dimmed = !enabled,
+        onClick = if (enabled) ({ onChange(!checked) }) else null) {
+        IslandSwitch(checked, onChange, enabled)
+    }
 }
 
 /** Маленькая метка рядом с названием, например «Экспериментальный». */

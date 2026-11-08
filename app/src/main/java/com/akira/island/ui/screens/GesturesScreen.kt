@@ -44,9 +44,15 @@ fun GesturesScreen(onBack: () -> Unit) {
         }
         SectionHeader(tr("Свайпы", "Swipes"))
         Group {
-            GroupToggle(Pos.First, Icons.Rounded.KeyboardArrowDown, tr("Потянуть вниз", "Pull down"),
-                tr("Раскрыть капсулу, вверх — свернуть", "Expand the capsule, up — collapse"),
-                s.swipeExpand, color = Tile.Teal) { v ->
+            GroupToggle(Pos.First, Icons.Rounded.KeyboardArrowDown, tr("Потянуть вниз → быстрое меню", "Pull down → Quick menu"),
+                tr("Свайп вниз по капсуле открывает быстрые действия", "Swipe down on the capsule to open quick actions"),
+                s.swipeDownMenuEnabled, color = Tile.Teal) { v ->
+                SettingsRepo.update { copy(swipeDownMenuEnabled = v) }
+            }
+            GroupToggle(Pos.Middle, Icons.Rounded.KeyboardArrowDown, tr("Потянуть вниз", "Pull down"),
+                if (s.swipeDownMenuEnabled) tr("Быстрое меню имеет приоритет", "The quick menu takes precedence")
+                else tr("Раскрыть капсулу, вверх — свернуть", "Expand the capsule, up — collapse"),
+                s.swipeExpand, color = Tile.Teal, enabled = !s.swipeDownMenuEnabled) { v ->
                 SettingsRepo.update { copy(swipeExpand = v) }
             }
             GroupToggle(Pos.Last, Icons.Rounded.SwapHoriz, tr("Толкнуть вбок", "Push sideways"),

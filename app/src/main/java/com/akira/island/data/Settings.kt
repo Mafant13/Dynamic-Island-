@@ -237,6 +237,8 @@ data class IslandSettings(
     val longPressAction: TapAction = TapAction.OPEN_APP,
     val swipeTracks: Boolean = true,
     val swipeExpand: Boolean = true,
+    /** Свайп вниз по капсуле с активностью открывает быстрое меню; [swipeExpand] тогда не действует */
+    val swipeDownMenuEnabled: Boolean = true,
 
     // Текст песен
     val lyricsEnabled: Boolean = true,
