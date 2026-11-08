@@ -4,6 +4,7 @@ import com.akira.island.service.NotifListener
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import android.accessibilityservice.AccessibilityService
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ContentTransform
@@ -99,6 +100,10 @@ import com.akira.island.core.Controls
 import com.akira.island.core.IslandBus
 import com.akira.island.core.Lyrics
 import com.akira.island.core.NoticeStyle
+import com.akira.island.core.SHADE_DISMISS_MAX_ATTEMPTS
+import com.akira.island.core.SHADE_DISMISS_MIN_API
+import com.akira.island.core.SHADE_DISMISS_RETRY_DELAY_MS
+import com.akira.island.core.shouldDismissNotificationShade
 import com.akira.island.core.SwipeDownAction
 import com.akira.island.core.Tints
 import com.akira.island.core.swipeDownAction
@@ -113,6 +118,7 @@ import com.akira.island.service.NavScreen
 import com.akira.island.service.PayMonitor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -132,8 +138,25 @@ private data class Frame(val act: Act, val expanded: Boolean, val quickMenu: Boo
     val key: String get() = "${act.id}|$expanded|$quickMenu"
 }
 
+/**
+ * Закрывает тенду через accessibility-сервис после workaround-жеста, который её открыл.
+ * Global action доступен с API 31+ (GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE); до того — просто ничего не делаем.
+ * Делает максимум два попытки с короткой задержкой: действие безвредно, если тенду уже закрыта.
+ */
+private fun dismissNotificationShade(service: AccessibilityService?, scope: CoroutineScope) {
+    if (service == null) return
+    if (Build.VERSION.SDK_INT < SHADE_DISMISS_MIN_API) return
+    scope.launch {
+        repeat(SHADE_DISMISS_MAX_ATTEMPTS) { attempt ->
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+            if (attempt < SHADE_DISMISS_MAX_ATTEMPTS - 1) delay(SHADE_DISMISS_RETRY_DELAY_MS)
+        }
+    }
+}
+
 @Composable
 fun IslandOverlay(
+    service: AccessibilityService? = null,
     onTransition: () -> Unit = {},
     onBodyBounds: (Rect) -> Unit = {},
     onBubbleBounds: (Rect) -> Unit = {},
@@ -355,7 +378,7 @@ fun IslandOverlay(
             enter = if (s.reduceEffects) fadeIn() else scaleIn(islandSpec(s), initialScale = 0.3f, transformOrigin = top) + fadeIn(tween(120)),
             exit = if (s.reduceEffects) fadeOut() else scaleOut(islandSpec(s), targetScale = 0.3f, transformOrigin = top) + fadeOut(tween(160)),
         ) {
-            IslandRow(slot, s, primary, showExpanded, quickMenu != null, lyrics, battery, bubbleVisible, lastSecondary[0], calibrating, onBody, onBubble)
+            IslandRow(slot, s, primary, showExpanded, quickMenu != null, lyrics, battery, bubbleVisible, lastSecondary[0], calibrating, onBody, onBubble, service = service)
         }
         if (eggOn) {
             EggSparks { body.value }
@@ -378,6 +401,7 @@ private fun IslandRow(
     calibrating: Boolean,
     onBodyBounds: (Rect) -> Unit,
     onBubbleBounds: (Rect) -> Unit,
+    service: AccessibilityService? = null,
 ) {
     Row(
         Modifier
@@ -396,7 +420,7 @@ private fun IslandRow(
     ) {
         // Пустое место слева уравновешивает пузырь, чтобы остров стоял над камерой
         Spacer(Modifier.animatedWidth(slot))
-        IslandBody(primary, showExpanded, quickMenu, s, lyrics, battery, calibrating, onBodyBounds)
+        IslandBody(primary, showExpanded, quickMenu, s, lyrics, battery, calibrating, onBodyBounds, service = service)
         BubbleSlot(slot, bubbleVisible, bubbleAct, s, onBubbleBounds)
     }
 }
@@ -446,6 +470,7 @@ private fun IslandBody(
     battery: BatteryInfo,
     calibrating: Boolean,
     onBounds: (Rect) -> Unit,
+    service: AccessibilityService? = null,
 ) {
     val context = LocalContext.current
     val haptic = rememberHaptic()
@@ -729,10 +754,18 @@ private fun IslandBody(
                             SwipeDownAction.QUICK_MENU -> {
                                 haptic()
                                 Controls.openQuickMenu()
+                                // Workaround: жест оборвал систему, поэтому меню открыли мы — вместе с ним
+                                // открылась тенду, и её нужно закрыть, пока меню открыто.
+                                if (shouldDismissNotificationShade(cancelled = true, apiLevel = Build.VERSION.SDK_INT)) {
+                                    dismissNotificationShade(service, scope)
+                                }
                             }
                             SwipeDownAction.EXPAND -> {
                                 haptic()
                                 Controls.expand(act.id)
+                                if (shouldDismissNotificationShade(cancelled = true, apiLevel = Build.VERSION.SDK_INT)) {
+                                    dismissNotificationShade(service, scope)
+                                }
                             }
                             SwipeDownAction.NONE -> Unit
                         }

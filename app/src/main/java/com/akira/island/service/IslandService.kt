@@ -309,12 +309,14 @@ class IslandService : AccessibilityService() {
     }
 
     private fun createWindows() {
+        val islandService = this
         val compose = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 MaterialTheme(colorScheme = darkColorScheme(), typography = InterTypography) {
                     LangScope {
                         IslandOverlay(
+                            service = islandService,
                             onTransition = ::onTransition,
                             // До целых пикселей: доли пикселя в конце пружины не двигают окна
                             onBodyBounds = { r -> val q = r.snapped(); if (q != body) { body = q; onBoundsChanged() } },

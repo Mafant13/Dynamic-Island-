@@ -1,7 +1,11 @@
 package com.akira.island.core
 
+import com.akira.island.core.SHADE_DISMISS_MIN_API
+import com.akira.island.core.shouldDismissNotificationShade
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -127,5 +131,20 @@ class SwipeDownMenuTest {
     @Test
     fun `opening over the idle capsule remembers no activity`() {
         assertNull(QuickMenuLogic.open(null).capsuleOnClose)
+    }
+
+    @Test
+    fun `notification shade is dismissed only for a cancelled swipe on api 31 plus`() {
+        assertTrue(shouldDismissNotificationShade(cancelled = true, apiLevel = SHADE_DISMISS_MIN_API + 2))
+    }
+
+    @Test
+    fun `notification shade is never dismissed below api 31`() {
+        assertFalse(shouldDismissNotificationShade(cancelled = true, apiLevel = SHADE_DISMISS_MIN_API - 1))
+    }
+
+    @Test
+    fun `notification shade is never dismissed for a swipe recognised without cancel`() {
+        assertFalse(shouldDismissNotificationShade(cancelled = false, apiLevel = SHADE_DISMISS_MIN_API + 2))
     }
 }

@@ -35,6 +35,25 @@ fun swipeDownAction(
     return SwipeDownAction.EXPAND
 }
 
+/** Global action con cui la tenda delle notifiche risponde al gesto: disponibile da API 31. */
+const val SHADE_DISMISS_MIN_API = 31
+
+/** Tentativi di chiusura della tenda dopo il workaround: la prima subito, la seconda dopo un breve ritardo. */
+const val SHADE_DISMISS_MAX_ATTEMPTS = 2
+
+/** Ritardo prima del secondo tentativo di chiusura della tenda. */
+const val SHADE_DISMISS_RETRY_DELAY_MS = 200L
+
+/**
+ * Нужно ли закрывать тенду после workaround-жеста, который оборвал систему.
+ *
+ * [cancelled] — жест ушёл в наш workaround (система его отменила): вместе с жестом она открывала
+ * тенду, поэтому, открыв меню, закрываем тенду обратно. Для обычного распознанного свайпа — false.
+ * [apiLevel] — версия Android: dismiss global action доступен с API 31+.
+ */
+fun shouldDismissNotificationShade(cancelled: Boolean, apiLevel: Int): Boolean =
+    cancelled && apiLevel >= SHADE_DISMISS_MIN_API
+
 /**
  * Быстрое меню поверх текущей активности. Помнит, какая капсула была на экране при открытии:
  * при закрытии активность не останавливается, и остров возвращается к ней же.
