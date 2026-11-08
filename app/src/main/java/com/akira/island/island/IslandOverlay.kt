@@ -99,7 +99,9 @@ import com.akira.island.core.Controls
 import com.akira.island.core.IslandBus
 import com.akira.island.core.Lyrics
 import com.akira.island.core.NoticeStyle
+import com.akira.island.core.SwipeDownAction
 import com.akira.island.core.Tints
+import com.akira.island.core.swipeDownAction
 import com.akira.island.core.tr
 import com.akira.island.data.Elasticity
 import com.akira.island.data.ExpandStyle
@@ -126,8 +128,8 @@ val CalibrationRed = Color(0xFFFF6B6B)
 /** Запас вокруг острова в окне: под тень, «желе» и пузырь. */
 const val ISLAND_PAD_DP = 12
 
-private data class Frame(val act: Act, val expanded: Boolean) {
-    val key: String get() = "${act.id}|$expanded"
+private data class Frame(val act: Act, val expanded: Boolean, val quickMenu: Boolean) {
+    val key: String get() = "${act.id}|$expanded|$quickMenu"
 }
 
 @Composable
@@ -153,6 +155,7 @@ fun IslandOverlay(
     val battery by IslandBus.battery.collectAsState()
     val foreground by IslandBus.foregroundPackage.collectAsState()
     val expanded by IslandBus.expanded.collectAsState()
+    val quickMenu by IslandBus.quickMenu.collectAsState()
     val focus by IslandBus.focus.collectAsState()
     val calibrating by IslandBus.calibrating.collectAsState()
     val nextAlarm by IslandBus.nextAlarm.collectAsState()
@@ -280,7 +283,7 @@ fun IslandOverlay(
     // Вторая активность — кружком рядом, если его не выключили в «Поведении»
     val secondary = if (!s.bubble || primary.transient || incoming || calibrating) null
     else acts.drop(1).firstOrNull { !it.transient && it !is Act.AlarmA }
-    val showExpanded = expanded && !primary.transient && !incoming && !calibrating
+    val showExpanded = expanded && !calibrating && (quickMenu != null || (!primary.transient && !incoming))
     val h = s.height.dp
 
     // Пузырь уходит с анимацией, поэтому помним последнюю активность в нём
@@ -291,7 +294,7 @@ fun IslandOverlay(
     val slot = animateDpAsState(if (bubbleVisible) activeHeight(s) + 6.dp else 0.dp, islandSpec(s), label = "slot")
 
     // Раскрытая активность пропала (музыку закрыли, таймер отменили) — сворачиваемся, а не показываем часы
-    val focusGone = expanded && focus != null && focus != Act.Idle.id && acts.none { it.id == focus }
+    val focusGone = expanded && quickMenu == null && focus != null && focus != Act.Idle.id && acts.none { it.id == focus }
     LaunchedEffect(focusGone) { if (focusGone) Controls.collapse() }
 
     // «Сворачивать раскрытый остров»: если его столько секунд не трогают, он сворачивается сам
@@ -352,7 +355,7 @@ fun IslandOverlay(
             enter = if (s.reduceEffects) fadeIn() else scaleIn(islandSpec(s), initialScale = 0.3f, transformOrigin = top) + fadeIn(tween(120)),
             exit = if (s.reduceEffects) fadeOut() else scaleOut(islandSpec(s), targetScale = 0.3f, transformOrigin = top) + fadeOut(tween(160)),
         ) {
-            IslandRow(slot, s, primary, showExpanded, lyrics, battery, bubbleVisible, lastSecondary[0], calibrating, onBody, onBubble)
+            IslandRow(slot, s, primary, showExpanded, quickMenu != null, lyrics, battery, bubbleVisible, lastSecondary[0], calibrating, onBody, onBubble)
         }
         if (eggOn) {
             EggSparks { body.value }
@@ -367,6 +370,7 @@ private fun IslandRow(
     s: IslandSettings,
     primary: Act,
     showExpanded: Boolean,
+    quickMenu: Boolean,
     lyrics: Lyrics?,
     battery: BatteryInfo,
     bubbleVisible: Boolean,
@@ -392,7 +396,7 @@ private fun IslandRow(
     ) {
         // Пустое место слева уравновешивает пузырь, чтобы остров стоял над камерой
         Spacer(Modifier.animatedWidth(slot))
-        IslandBody(primary, showExpanded, s, lyrics, battery, calibrating, onBodyBounds)
+        IslandBody(primary, showExpanded, quickMenu, s, lyrics, battery, calibrating, onBodyBounds)
         BubbleSlot(slot, bubbleVisible, bubbleAct, s, onBubbleBounds)
     }
 }
@@ -436,6 +440,7 @@ private fun BubbleSlot(slot: State<Dp>, visible: Boolean, act: Act?, s: IslandSe
 private fun IslandBody(
     primary: Act,
     expanded: Boolean,
+    quickMenu: Boolean,
     s: IslandSettings,
     lyrics: Lyrics?,
     battery: BatteryInfo,
@@ -619,6 +624,7 @@ private fun IslandBody(
             }
               .pointerInput(Unit) {
                 val threshold = 36.dp.toPx()
+                val cancelThreshold = 4.dp.toPx()
                 val side = 56.dp.toPx()
                 var dx = 0f
                 var dy = 0f
@@ -645,6 +651,17 @@ private fun IslandBody(
                         if (!swipedAway && noticeDrag.value != 0f) {
                             scope.launch { noticeDrag.animateTo(0f, spring(dampingRatio = 0.6f)) }
                         }
+                        val down = swipeDownAction(
+                            expanded = isExpanded,
+                            vertical = vertical,
+                            dy = dy,
+                            threshold = threshold,
+                            transient = act.transient,
+                            idle = act is Act.Idle,
+                            swipeExpand = settings.swipeExpand,
+                            idleExpand = settings.idleExpand,
+                            menuEnabled = settings.swipeDownMenuEnabled,
+                        )
                         when {
                             swipedAway -> {
                                 haptic()
@@ -659,8 +676,11 @@ private fun IslandBody(
                                     noticeAlpha.animateTo(1f, tween(220))
                                 }
                             }
-                            !isExpanded && vertical && dy > threshold && settings.swipeExpand && !act.transient &&
-                                (act !is Act.Idle || settings.idleExpand) -> {
+                            down == SwipeDownAction.QUICK_MENU -> {
+                                haptic()
+                                Controls.openQuickMenu()
+                            }
+                            down == SwipeDownAction.EXPAND -> {
                                 haptic()
                                 Controls.expand(act.id)
                             }
@@ -690,12 +710,38 @@ private fun IslandBody(
                     onDragCancel = {
                         scope.launch { pull.animateTo(0f) }
                         scope.launch { noticeDrag.animateTo(0f, spring(dampingRatio = 0.6f)) }
+                        // Система обрывает жест над статус-баром: короткое движение вниз уже считается
+                        // свайпом и открывает меню, пока касание не перехватила шторка
+                        val act = current
+                        val down = swipeDownAction(
+                            expanded = isExpanded,
+                            vertical = abs(dy) > abs(dx),
+                            dy = dy,
+                            threshold = cancelThreshold,
+                            transient = act.transient,
+                            idle = act is Act.Idle,
+                            swipeExpand = settings.swipeExpand,
+                            idleExpand = settings.idleExpand,
+                            menuEnabled = settings.swipeDownMenuEnabled,
+                            cancelled = true,
+                        )
+                        when (down) {
+                            SwipeDownAction.QUICK_MENU -> {
+                                haptic()
+                                Controls.openQuickMenu()
+                            }
+                            SwipeDownAction.EXPAND -> {
+                                haptic()
+                                Controls.expand(act.id)
+                            }
+                            SwipeDownAction.NONE -> Unit
+                        }
                     },
                     onDrag = { change, amount ->
                         change.consume()
                         dx += amount.x
                         dy += amount.y
-                        if (!isExpanded && settings.swipeExpand) {
+                        if (!isExpanded && (settings.swipeExpand || settings.swipeDownMenuEnabled)) {
                             scope.launch { pull.snapTo((dy / (threshold * 3)).coerceIn(0f, 1f)) }
                         }
                         // Плашка уведомления едет за пальцем вправо
@@ -709,7 +755,7 @@ private fun IslandBody(
         // Смена содержимого: с «Жидким раскрытием» новое вырастает из прежнего вместе с формой острова,
         // без него — прежнее перетекание. Форма в обоих случаях меняется пружиной из «Раскрытия острова»
         val widths = remember { HashMap<String, Int>() }
-        val frames = updateTransition(Frame(primary, expanded), label = "island")
+        val frames = updateTransition(Frame(primary, expanded, quickMenu), label = "island")
         frames.AnimatedContent(
             contentAlignment = Alignment.TopCenter,
             contentKey = { it.key },
@@ -720,7 +766,7 @@ private fun IslandBody(
         ) { f ->
             Box(if (s.liquidExpand) liquidFlow(f.key, frames, widths, s) else classicFlow(s)) {
                 if (f.expanded) {
-                    ExpandedContent(f.act, s, lyrics, battery, expandedWidth)
+                    ExpandedContent(f.act, s, lyrics, battery, expandedWidth, quickMenu = f.quickMenu)
                 } else {
                     CompactContent(f.act, s, expandedWidth)
                 }

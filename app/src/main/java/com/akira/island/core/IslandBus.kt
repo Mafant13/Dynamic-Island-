@@ -22,6 +22,8 @@ object IslandBus {
 
     val serviceRunning = MutableStateFlow(false)
     val expanded = MutableStateFlow(false)
+    /** Открыто быстрое меню поверх активности: null — обычный остров, иначе помним капсулу для возврата */
+    val quickMenu = MutableStateFlow<QuickMenu?>(null)
     /** id активности, которую пользователь выбрал (например, кликом по пузырю) */
     val focus = MutableStateFlow<String?>(null)
 

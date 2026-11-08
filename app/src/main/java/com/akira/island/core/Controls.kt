@@ -36,8 +36,20 @@ object Controls {
         IslandBus.expanded.value = true
     }
 
+    /**
+     * Свайп вниз по капсуле: быстрое меню поверх текущей активности. Активность не останавливается,
+     * поэтому после закрытия (касание мимо, свайп вверх, нажатие на остров) возвращается её капсула.
+     * На заблокированном экране меню не открываем — как и остальные команды, ждём разблокировки.
+     */
+    fun openQuickMenu() {
+        if (IslandBus.keyguard.value) return
+        IslandBus.quickMenu.value = QuickMenuLogic.open(IslandBus.focus.value)
+        IslandBus.expanded.value = true
+    }
+
     fun collapse() {
         IslandBus.expanded.value = false
+        IslandBus.quickMenu.value = QuickMenuLogic.close()
         IslandBus.focus.value = null
         if (IslandBus.alarmDraft.value != null) {
             IslandBus.alarmDraft.value = null
@@ -249,6 +261,11 @@ object Controls {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         runCatching { context.startActivity(intent) }
         collapse()
+    }
+
+    /** «Настройки» из быстрого меню — открывает приложение, как его значок на рабочем столе. */
+    fun openSettings(context: Context) {
+        openApp(context, context.packageName)
     }
 
     /** Нажать кнопку из уведомления (ответить, отклонить, открыть). */

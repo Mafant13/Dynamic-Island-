@@ -62,6 +62,7 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.HeartBroken
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Screenshot
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -117,7 +118,7 @@ import java.util.Date
 private val Dim = Color.White.copy(alpha = 0.55f)
 
 @Composable
-fun ExpandedContent(act: Act, s: IslandSettings, lyrics: Lyrics?, battery: BatteryInfo, width: Dp) {
+fun ExpandedContent(act: Act, s: IslandSettings, lyrics: Lyrics?, battery: BatteryInfo, width: Dp, quickMenu: Boolean = false) {
     val context = LocalContext.current
     // Фонарик, как в iOS 18, — не широкая плашка, а высокая карточка с лучом
     if (act is Act.TorchA) {
@@ -128,7 +129,9 @@ fun ExpandedContent(act: Act, s: IslandSettings, lyrics: Lyrics?, battery: Batte
     Box(Modifier.width(width).padding(start = 22.dp, end = 22.dp, top = cameraInset(s), bottom = 20.dp)) {
         // Карточка нового будильника перекрывает активность острова, пока её не закроют
         val draft by IslandBus.alarmDraft.collectAsState()
-        if (draft != null) {
+        if (quickMenu) {
+            IdleExpanded(s, battery, showSettings = true)
+        } else if (draft != null) {
             AlarmCreateCard()
         } else when (act) {
             is Act.MediaA -> MediaExpanded(act.m, s, lyrics)
@@ -676,7 +679,7 @@ private fun ChargingExpanded(b: BatteryInfo) {
  * секундомер и фонарик). Кнопок нет — только часы и заряд, остров компактный.
  */
 @Composable
-private fun IdleExpanded(s: IslandSettings, battery: BatteryInfo) {
+private fun IdleExpanded(s: IslandSettings, battery: BatteryInfo, showSettings: Boolean = false) {
     val context = LocalContext.current
     val now = rememberWallNow(1000)
     val time = DateFormat.getTimeFormat(context).format(Date(now))
@@ -730,35 +733,43 @@ private fun IdleExpanded(s: IslandSettings, battery: BatteryInfo) {
             }
         }
         val actions = s.quickActions
-        if (actions.isEmpty()) return@Column
-        Spacer(Modifier.height(16.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Таймер от 1 до 99 минут
-            if (QuickAction.TIMER in actions) Row(
-                Modifier.fillMaxWidth().clip(CircleShape).background(Color.White.copy(alpha = 0.08f)).padding(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RoundButton(Ios.remove, size = 38.dp, iconScale = 0.44f) {
-                    SettingsRepo.update { copy(timerMinutes = (timerMinutes - 1).coerceAtLeast(1)) }
+        if (actions.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Таймер от 1 до 99 минут
+                if (QuickAction.TIMER in actions) Row(
+                    Modifier.fillMaxWidth().clip(CircleShape).background(Color.White.copy(alpha = 0.08f)).padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RoundButton(Ios.remove, size = 38.dp, iconScale = 0.44f) {
+                        SettingsRepo.update { copy(timerMinutes = (timerMinutes - 1).coerceAtLeast(1)) }
+                    }
+                    Text(
+                        tr("${s.timerMinutes} мин", "${s.timerMinutes} min"), color = Color.White, fontSize = 16.sp, style = Digits,
+                        textAlign = TextAlign.Center, modifier = Modifier.weight(1f),
+                    )
+                    RoundButton(Ios.add, size = 38.dp, iconScale = 0.44f) {
+                        SettingsRepo.update { copy(timerMinutes = (timerMinutes + 1).coerceAtMost(99)) }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    PillButton(Ios.play, tr("Таймер", "Timer"), bg = Tints.Orange, fg = Color.Black) {
+                        Controls.startSystemTimer(context, s.timerMinutes * 60, null)
+                        Controls.expand("timer")
+                    }
                 }
-                Text(
-                    tr("${s.timerMinutes} мин", "${s.timerMinutes} min"), color = Color.White, fontSize = 16.sp, style = Digits,
-                    textAlign = TextAlign.Center, modifier = Modifier.weight(1f),
-                )
-                RoundButton(Ios.add, size = 38.dp, iconScale = 0.44f) {
-                    SettingsRepo.update { copy(timerMinutes = (timerMinutes + 1).coerceAtMost(99)) }
-                }
-                Spacer(Modifier.width(8.dp))
-                PillButton(Ios.play, tr("Таймер", "Timer"), bg = Tints.Orange, fg = Color.Black) {
-                    Controls.startSystemTimer(context, s.timerMinutes * 60, null)
-                    Controls.expand("timer")
+                // Остальные кнопки — по две в ряд, в порядке из настроек
+                actions.filter { it != QuickAction.TIMER }.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { QuickButton(it, context, Modifier.weight(1f)) }
+                    }
                 }
             }
-            // Остальные кнопки — по две в ряд, в порядке из настроек
-            actions.filter { it != QuickAction.TIMER }.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { QuickButton(it, context, Modifier.weight(1f)) }
-                }
+        }
+        // Быстрое меню поверх активности: та же панель плюс вход в настройки приложения
+        if (showSettings) {
+            Spacer(Modifier.height(10.dp))
+            PillButton(Icons.Rounded.Settings, tr("Настройки", "Settings"), Modifier.fillMaxWidth()) {
+                Controls.openSettings(context)
             }
         }
     }
